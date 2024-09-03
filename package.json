@@ -2,7 +2,7 @@
   "name": "restaurant-layout",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://MingLIUUU.github.io/restaurant-layout",
+  "homepage": "https://MingLIUUU.github.io/ResTable",
   "dependencies": {
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
