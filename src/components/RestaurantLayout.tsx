@@ -168,7 +168,7 @@ const RestaurantLayout: React.FC = () => {
               }
             } else {
               // 左或右
-              if (dx > 0) updatedChairs[1] = !table.chairs[1]; // 右
+              if (dx < 0) updatedChairs[1] = !table.chairs[1]; // 右
               else updatedChairs[3] = !table.chairs[3]; // 左
             }
             chairUpdated = true;
