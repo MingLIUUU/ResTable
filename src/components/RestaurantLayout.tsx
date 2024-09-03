@@ -364,22 +364,6 @@ const RestaurantLayout: React.FC = () => {
           重置
         </button>
         </div>
-        <div style={{ display: 'flex' }}>
-        <div style={{ width: '200px', marginRight: '20px' }}>
-          <h3>桌子和椅子状态</h3>
-          <ul style={{ listStyleType: 'none', padding: 0 }}>
-            {rooms.flatMap((room, roomIndex) => 
-              room.tables.map((table, tableIndex) => (
-                <li key={`${room.id}-${tableIndex}`}>
-                  桌子 {tableIndex + 1}: 
-                  {table.chairs.map((chair, chairIndex) => 
-                    chair ? `椅${chairIndex + 1} ` : ''
-                  ).join('')}
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
       <canvas
         ref={canvasRef}
         width={width}
@@ -388,7 +372,6 @@ const RestaurantLayout: React.FC = () => {
         onDoubleClick={handleCanvasDoubleClick}
         style={{ border: '1px solid black' }}
       />
-    </div>
   </div>
   );
 };
