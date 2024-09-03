@@ -2,6 +2,8 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+To vist live demo on github page, please visit [https://mingliuuu.github.io/ResTable/](https://mingliuuu.github.io/ResTable/)
+
 ## Available Scripts
 
 In the project directory, you can run:
