@@ -36,3 +36,56 @@
     transform: rotate(360deg);
   }
 }
+
+
+.room-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 200px;
+}
+
+.room-info {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+  margin-right: 10px;
+}
+
+.room-name {
+  margin-right: 5px;
+}
+
+.table-count {
+  margin-left: auto;
+}
+
+.room-actions {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.room-actions button {
+  white-space: nowrap;
+}
+
+input {
+  flex-grow: 1;
+  margin-right: 5px;
+}
+
+@media (max-width: 400px) {
+  .room-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .room-info {
+    margin-bottom: 5px;
+  }
+
+  .room-actions {
+    justify-content: space-between;
+  }
+}
