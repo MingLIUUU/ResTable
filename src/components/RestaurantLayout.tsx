@@ -1,18 +1,12 @@
 import { click } from '@testing-library/user-event/dist/click';
 import React, { useState, useRef, useEffect } from 'react';
+import { Room, TableType, Tool, TableSubTool } from '../types';
+import { isPointInPolygon, pointToLineDistance, snapToGrid, createSquarePolygon } from '../utils/math';
+import { drawGrid, drawWalls, drawRoom, drawTempPoint } from '../utils/drawFunctions';
+import { RestaurantLayoutView } from './RestaurantLayoutView';
+import { tab } from '@testing-library/user-event/dist/tab';
 
-type TableType = 'square' | 'diamond' | 'round';
-
-interface Room {
-  id: number;
-  name: string;
-  walls: [number, number, number, number][];
-  tables: { x: number; y: number; type: TableType; chairs: boolean[] }[];
-  subRooms: Room[];
-  isTemporary: boolean;
-}
-
-const RoomList: React.FC<{
+export const RoomList: React.FC<{
   rooms: Room[];
   onDeleteRoom: (roomId: number) => void;
   onRenameRoom: (roomId: number, newName: string) => void;
@@ -54,8 +48,8 @@ const RoomList: React.FC<{
             </div>
             {room.id !== 0 && !room.isTemporary && (
               <div className="room-actions">
-                <button onClick={() => handleRename(room)}>重命名</button>
-                <button onClick={() => onDeleteRoom(room.id)}>删除</button>
+                <button onClick={() => handleRename(room)}>Rename</button>
+                <button onClick={() => onDeleteRoom(room.id)}>Delete</button>
               </div>
             )}
           </div>
@@ -73,8 +67,8 @@ const RoomList: React.FC<{
   );
 };
 
-
 const RestaurantLayout: React.FC = () => {
+  //for canvas
   const [width, setWidth] = useState(1000);
   const [height, setHeight] = useState(800);
   const unit = 20;
@@ -93,11 +87,14 @@ const RestaurantLayout: React.FC = () => {
       isTemporary: false
     }
   ]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  //for tool selection
   const [currentTool, setCurrentTool] = useState<'wall' | 'eraser' | 'table' |  'room' | null>(null);
   const [isToolInUse, setIsToolInUse] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  //for walls
   const [firstPoint, setFirstPoint] = useState<{ x: number; y: number } | null>(null);
   // for tables
+  const [tableSubTool, setTableSubTool] = useState<TableSubTool>(null);
   const [selectedTableType, setSelectedTableType] = useState<TableType>('square');
   const [canAddTable, setCanAddTable] = useState(false);
   // for rooms
@@ -114,7 +111,7 @@ const RestaurantLayout: React.FC = () => {
     if (!ctx) return;
 
     ctx.clearRect(0, 0, width, height);
-    drawGrid(ctx);
+    drawGrid(ctx, width, height, unit);
     drawWalls(ctx, rooms[0].walls);
     drawTables(ctx, rooms[0].tables);
 
@@ -140,54 +137,6 @@ const RestaurantLayout: React.FC = () => {
     if (firstPoint && currentTool === 'wall') {
       drawTempPoint(ctx, firstPoint.x, firstPoint.y);
     }
-  };
-
-  // 绘制grid的函数
-  const drawGrid = (ctx: CanvasRenderingContext2D) => {
-    ctx.strokeStyle = 'rgb(192, 192, 192)'; // 灰色
-    ctx.lineWidth = 1;
-
-    const gridSize = unit; // 网格大小
-
-    for (let x = 0; x <= width; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-
-    for (let y = 0; y <= height; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-  };
-
-  // 绘制walls的函数
-  const drawWalls = (ctx: CanvasRenderingContext2D, walls: Room['walls']) => {
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 2;
-
-    walls.forEach(([x1, y1, x2, y2]) => {
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    });
-  };
-
-  // 绘制Room的函数
-  const drawRoom = (ctx: CanvasRenderingContext2D, room: Room) => {
-    ctx.strokeStyle = room.isTemporary ? 'gray' : 'darkgray';
-    ctx.lineWidth = 2;
-
-    room.walls.forEach(([x1, y1, x2, y2]) => {
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    });
   };
 
  // 添加新的绘制函数来展示不同类型的桌子
@@ -260,6 +209,20 @@ const RestaurantLayout: React.FC = () => {
     ctx.restore();
   };
 
+  // 添加渲染函数来展示桌子选项
+  const renderTableOptions = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 150;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      drawTableOption(ctx, 'square', 25, 25, selectedTableType === 'square');
+      drawTableOption(ctx, 'diamond', 75, 25, selectedTableType === 'diamond');
+      drawTableOption(ctx, 'round', 125, 25, selectedTableType === 'round');
+    }
+    return canvas;
+  };
+
   // 实现绘制桌椅的函数
   const drawTables = (ctx: CanvasRenderingContext2D, tables: Room['tables']) => {
   tables.forEach(table => {
@@ -319,20 +282,6 @@ const RestaurantLayout: React.FC = () => {
   });
 };
 
-  // 添加渲染函数来展示桌子选项
-  const renderTableOptions = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 150;
-    canvas.height = 50;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      drawTableOption(ctx, 'square', 25, 25, selectedTableType === 'square');
-      drawTableOption(ctx, 'diamond', 75, 25, selectedTableType === 'diamond');
-      drawTableOption(ctx, 'round', 125, 25, selectedTableType === 'round');
-    }
-    return canvas;
-  };
-
   const handleTableOptionClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -341,28 +290,18 @@ const RestaurantLayout: React.FC = () => {
     else setSelectedTableType('round');
   };
 
-  // 现绘制临时点的函数
-  const drawTempPoint = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(x, y, 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  };
-
   // 处理鼠标单击事件的函数
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const rect = canvas.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const clickY = event.clientY - rect.top;
+    const [snappedX, snappedY] = snapToGrid(clickX, clickY, unit);
+  
     if (currentTool === 'table') {
-      const rect = canvas.getBoundingClientRect();
-      const clickX = event.clientX - rect.left;
-      const clickY = event.clientY - rect.top;
-      const gridAlignedX = Math.round(clickX / unit) * unit;
-      const gridAlignedY = Math.round(clickY / unit) * unit;
+
     
       setRooms(prevRooms => {
         let chairUpdated = false;
@@ -370,59 +309,59 @@ const RestaurantLayout: React.FC = () => {
         let isNearby = false;
     
         const updateRoomRecursive = (room: Room): Room => {
-          // 首先处理当前Room的桌子
+          // for current table in current Room
           const updatedTables = room.tables.filter(table => {
-            const dx = table.x - clickX;
-            const dy = table.y - clickY;
-            if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
-              if (table.type === 'round') {
-                const newSeatCount = prompt('输入座位数量 (2-8):', table.chairs.length.toString());
-                if (newSeatCount) {
-                  const count = Math.max(2, Math.min(8, parseInt(newSeatCount, 10)));
-                  return {
-                    ...table,
-                    chairs: Array(count).fill(true)
-                  };
-                }
-              } 
-            } else if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
-              tableDeleted = true;
-              return false; // Delete桌子
-            } else if (clickInSquare(table.x, table.y, clickX, clickY)) {
-              const updatedChairs = [...table.chairs];
-              if (Math.abs(dy) > Math.abs(dx)) {
-                // 上或下
-                if (dy > 0) {
-                  updatedChairs[0] = !table.chairs[0]; // 上
-                } else {
-                  updatedChairs[2] = !table.chairs[2]; // 下
+            const tablesquare = createSquarePolygon(table.x, table.y, unit);
+            if (isPointInPolygon(clickX, clickY, tablesquare)) {
+              if (tableSubTool === 'delete') {
+                return false;
+              }else if (tableSubTool === 'editChairs') {
+                if (table.type === 'round') {
+                  const newSeatCount = prompt('输入座位数量 (2-8):', table.chairs.length.toString());
+                  if (newSeatCount) {
+                    
+                    const count = Math.max(2, Math.min(8, parseInt(newSeatCount, 10)));
+                    return {
+                      ...table,
+                      chairs: Array(count).fill(true)
+                    };
+                  }
+                } else if (table.type === 'square') {
+                  const updatedChairs = [...table.chairs];
+                  const dx = table.x - clickX;
+                  const dy = table.y - clickY;
+                  if (Math.abs(dy) > Math.abs(dx)) {
+                    // 上或下
+                    if (dy > 0) {
+                      updatedChairs[0] = !table.chairs[0]; // 上
+                    } else {
+                      updatedChairs[2] = !table.chairs[2]; // 下
+                    }
+                  } else {
+                    // 左或右
+                    if (dx < 0) updatedChairs[1] = !table.chairs[1]; // 右
+                    else updatedChairs[3] = !table.chairs[3]; // 左
+                  }
+                  chairUpdated = true;
+                  return { ...table, chairs: updatedChairs };
                 }
               } else {
-                // 左或右
-                if (dx < 0) updatedChairs[1] = !table.chairs[1]; // 右
-                else updatedChairs[3] = !table.chairs[3]; // 左
+                return table;
               }
-              chairUpdated = true;
-              return { ...table, chairs: updatedChairs };
-            }
-            if (Math.abs(table.x - clickX) < 40 && Math.abs(table.y - clickY) < 40) isNearby = true;
-            return table;
-          });
-    
+          }
+        });
           // 然后递归处理子Room
           const updatedSubRooms = room.subRooms.map(updateRoomRecursive);
     
           return { ...room, tables: updatedTables, subRooms: updatedSubRooms };
         };
-    
         const updatedRooms = prevRooms.map(updateRoomRecursive);
-    
-        if (!chairUpdated && !tableDeleted && !isNearby) {
-          // 如果没有更新椅子且没有删除桌子且点击位置没有桌子且不在其他桌子附近，添加新桌子
+
+        if (tableSubTool === 'add') {
           const addTableToRoom = (room: Room): Room => {
             // 首先检查所有子房间
             for (let subRoom of room.subRooms) {
-              if (isPointInPolygon(gridAlignedX, gridAlignedY, subRoom.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))) {
+              if (isPointInPolygon(snappedX, snappedY, subRoom.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))) {
                 // 如果点击在子房间内，递归调用addTableToRoom
                 return {
                   ...room,
@@ -432,13 +371,13 @@ const RestaurantLayout: React.FC = () => {
             }
             
             // 如果不在任何子房间内，检查是否在当前房间内
-            if (isPointInPolygon(gridAlignedX, gridAlignedY, room.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))) {
+            if (isPointInPolygon(snappedX, snappedY, room.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))) {
               // 在当前房间内，添加新桌子
               return {
                 ...room,
                 tables: [...room.tables, { 
-                  x: gridAlignedX, 
-                  y: gridAlignedY, 
+                  x: snappedX, 
+                  y: snappedY, 
                   type: selectedTableType,
                   chairs: selectedTableType === 'round' ? Array(6).fill(true) : [true, true, true, true] 
                 }]
@@ -463,11 +402,11 @@ const RestaurantLayout: React.FC = () => {
   const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const rect = canvas.getBoundingClientRect();
     const clickX = event.clientX - rect.left;
     const clickY = event.clientY - rect.top;
-
+    const [snappedX, snappedY] = snapToGrid(clickX, clickY, unit);
+  
     if (currentTool === 'wall') {
       if (!firstPoint) {
         setFirstPoint({ x: clickX, y: clickY });
@@ -552,13 +491,6 @@ const RestaurantLayout: React.FC = () => {
     }
   };
 
-  // 方向clickInSquare
-  const clickInSquare = (tableX: number, tableY: number, clickX: number, clickY: number) => {
-    const isY = Math.abs(tableX - clickX) <= unit;
-    const isX = Math.abs(tableY - clickY) <= unit;
-    return isX && isY;
-  }
-
   // 添加Reset函数
   const handleReset = () => {
     setRooms([
@@ -583,18 +515,22 @@ const RestaurantLayout: React.FC = () => {
     setIsDrawingRoom(false);
     setDrawingRoomPoints([]);
     setCanAddTable(false);
+    setTableSubTool(null);
+    setIsAddingTable(false);
   };
 
-  const handleToolSelect = (tool: 'wall' | 'eraser' | 'table' | 'room')  => {
-    if (isToolInUse && currentTool === 'wall' && firstPoint) {
-      alert('请先完成当前操作');
+  const handleToolSelect = (tool: Tool)  => {
+    if ((isToolInUse && currentTool === 'wall' && firstPoint) 
+      || (isDrawingRoom))
+       {
+      alert('Finish the current operation first');
       return;
     }
-    if (isDrawingRoom) {
-      alert('请先完成当前Room的绘制');
-      return;
-    }
-    
+
+    setTableSubTool(null);
+    //setWallSubTool(null);
+    //setRoomSubTool(null);
+
     // 如果当前工具是 'wall'，并且正在切换到另一个，重置 firstPoint
     if (currentTool === 'wall' && tool !== 'wall') {
       setFirstPoint(null);
@@ -603,53 +539,26 @@ const RestaurantLayout: React.FC = () => {
     setCurrentTool(tool);
     setIsToolInUse(tool === 'wall');
     setCanAddTable(false);
-  };
 
-  const handleAddButtonClick = () => {
-    if (currentTool === 'table') {
-      setCanAddTable(true);
+    // 根据选择的工具设置默认的子工具
+    if (tool === 'table') {
+      setTableSubTool('add');
       setIsAddingTable(true);
+    } else {
+      setIsAddingTable(false);
+    }
+
+    // 如果选择了 'room' 工具，设置 isDrawingRoom 为 true
+    if (tool === 'room') {
+      setIsDrawingRoom(true);
+    } else {
+      setIsDrawingRoom(false);
+      setDrawingRoomPoints([]);
     }
   };
-
-  // 添Add一个辅助函数来计算点到线段的距离
-  const pointToLineDistance = (x: number, y: number, x1: number, y1: number, x2: number, y2: number) => {
-    const A = x - x1;
-    const B = y - y1;
-    const C = x2 - x1;
-    const D = y2 - y1;
-
-    const dot = A * C + B * D;
-    const lenSq = C * C + D * D;
-    let param = -1;
-    if (lenSq !== 0) // 防止除以0
-      param = dot / lenSq;
-
-    let xx, yy;
-
-    if (param < 0) {
-      xx = x1;
-      yy = y1;
-    }
-    else if (param > 1) {
-      xx = x2;
-      yy = y2;
-    }
-    else {
-      xx = x1 + param * C;
-      yy = y1 + D * param;
-    }
-
-    const dx = x - xx;
-    const dy = y - yy;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    userSelect: 'none',
-    WebkitUserSelect: 'none',
-    MozUserSelect: 'none',
-    msUserSelect: 'none',
+  
+  const handleTableSubToolSelect = (subTool: TableSubTool) => {
+    setTableSubTool(subTool);
   };
 
   // 添Add一个 useEffect 来监听 rooms 的变化
@@ -690,18 +599,6 @@ const RestaurantLayout: React.FC = () => {
     setIsDrawingRoom(false);
     setCurrentTool(null);
     setDrawingRoomPoints([]);
-  };
-
-  const isPointInPolygon = (x: number, y: number, polygon: { x: number; y: number }[]) => {
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const xi = polygon[i].x, yi = polygon[i].y;
-      const xj = polygon[j].x, yj = polygon[j].y;
-      const intersect = ((yi > y) !== (yj > y))
-          && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
   };
 
   const handleDeleteRoom = (roomId: number) => {
@@ -791,108 +688,32 @@ const RestaurantLayout: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex'}}>
-      <RoomList rooms={rooms} onRenameRoom={handleRenameRoom} onDeleteRoom={handleDeleteRoom} />
-      <div>
-        <div>
-        <input
-          type="number"
-          value={width}
-          onChange={(e) => setWidth(Number(e.target.value))}
-        />
-        <input
-          type="number"
-          value={height}
-          onChange={(e) => setHeight(Number(e.target.value))}
-        />
-      </div>
-      <div>
-        <button 
-          onClick={() => handleToolSelect('wall')}
-          style={{ 
-            ...buttonStyle,
-            backgroundColor: currentTool === 'wall' ? 'lightblue' : 'white' 
-          }}
-        >
-          AddWall
-        </button>
-        <button 
-          onClick={() => handleToolSelect('eraser')}
-          style={{ 
-            ...buttonStyle,
-            backgroundColor: currentTool === 'eraser' ? 'lightblue' : 'white' 
-          }}
-        >
-          DeleteWall
-        </button>
-        <button 
-          onClick={() => handleToolSelect('table')}
-          style={{ 
-            ...buttonStyle,
-            backgroundColor: currentTool === 'table' ? 'lightblue' : 'white' 
-          }}
-        >
-            AddTable
-          </button>
-          <button 
-            onClick={() => handleToolSelect('room')}
-            disabled={isDrawingRoom}
-            style={{ 
-              ...buttonStyle,
-              backgroundColor: currentTool === 'room' ? 'lightblue' : 'white',
-              opacity: isDrawingRoom ? 0.5 : 1
-            }}
-          >
-            AddRoom
-          </button>
-          <button onClick={handleReset} style={buttonStyle}>
-            Reset
-          </button>
-          <button onClick={handleExport} style={buttonStyle}>
-            Export
-          </button>
-          <button onClick={handleImport} style={buttonStyle}>
-            Import
-          </button>
-        </div>
-        {currentTool === 'table' && (
-      <div>
-      <div>
-        <button onClick={handleAddButtonClick}>Add</button>
-        <button onClick={() => {/* 合并桌子逻辑 */}}>Merge</button>
-        <button onClick={() => {/* 编辑椅子逻辑 */}}>EditChairs</button>
-        <button onClick={() => {/* 删除桌子逻辑 */}}>Delete</button>
-      </div>
-      {isAddingTable && (
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <img 
-            src={renderTableOptions().toDataURL()} 
-            alt="Table options" 
-            onClick={handleTableOptionClick}
-            style={{ cursor: 'pointer' }}
-          />
-          <select 
-            value={selectedTableType} 
-            onChange={(e) => setSelectedTableType(e.target.value as TableType)}
-          >
-            <option value="square">square table</option>
-            <option value="diamond">diamond table</option>
-            <option value="round">round table</option>
-          </select>
-        </div>
-      )}
-    </div>
-        )}
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        onClick={handleCanvasClick}
-        onDoubleClick={handleCanvasDoubleClick}
-        style={{ border: '1px solid black' }}
-      />
-      </div>      
-  </div>
+    <RestaurantLayoutView
+      rooms={rooms}
+      width={width}
+      height={height}
+      currentTool={currentTool}
+      isDrawingRoom={isDrawingRoom}
+      isAddingTable={isAddingTable}
+      selectedTableType={selectedTableType}
+      handleRenameRoom={handleRenameRoom}
+      handleDeleteRoom={handleDeleteRoom}
+      handleToolSelect={handleToolSelect}
+      handleReset={handleReset}
+      handleExport={handleExport}
+      handleImport={handleImport}
+
+      handleTableOptionClick={handleTableOptionClick}
+      setSelectedTableType={setSelectedTableType}
+      handleCanvasClick={handleCanvasClick}
+      handleCanvasDoubleClick={handleCanvasDoubleClick}
+      renderTableOptions={renderTableOptions}
+      canvasRef={canvasRef}
+      setWidth={setWidth}
+      setHeight={setHeight}
+      tableSubTool={tableSubTool}
+      handleTableSubToolSelect={handleTableSubToolSelect}
+    />
   );
 };
 
