@@ -59,3 +59,95 @@ export  const drawRoom = (ctx: CanvasRenderingContext2D, room: Room) => {
     });
   };
 
+const drawSingleTable = (
+  ctx: CanvasRenderingContext2D, 
+  type: TableType, 
+  fillStyle: string, 
+  strokeStyle: string
+) => {
+  ctx.fillStyle = fillStyle;
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = 1;
+
+  switch (type) {
+    case 'square':
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.strokeRect(-8, -8, 16, 16);
+      break;
+    case 'diamond':
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.strokeRect(-8, -8, 16, 16);
+      ctx.rotate(-Math.PI / 4);
+      break;
+    case 'round':
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      break;
+  }
+};
+
+const drawChairs = (
+  ctx: CanvasRenderingContext2D, 
+  table: Room['tables'][number], 
+  strokeStyle: string
+) => {
+  table.chairs.forEach((chair, chairIndex) => {
+    if (chair) {
+      let cx, cy;
+      if (table.type === 'round') {
+        const angle = (chairIndex / table.chairs.length) * Math.PI * 2 - Math.PI / 2;
+        cx = Math.cos(angle) * 12;
+        cy = Math.sin(angle) * 12;
+      } else {
+        const chairPositions = table.type === 'diamond' 
+          ? [[8.5, -8.5], [8.5, 8.5], [-8.5, 8.5], [-8.5, -8.5]]
+          : [[0, -12], [12, 0], [0, 12], [-12, 0]];
+        [cx, cy] = chairPositions[chairIndex % chairPositions.length];
+      }
+      
+      ctx.fillStyle = 'white';
+      ctx.strokeStyle = strokeStyle;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } 
+  });
+};
+
+
+export const drawTables = (
+  ctx: CanvasRenderingContext2D, 
+  tables: Room['tables'],
+  selectedTable: { roomId: number; tableIndex: number } | null = null,
+  tempMovePosition: { x: number; y: number } | null = null
+) => {
+  tables.forEach((table, index) => {
+    ctx.save();
+    ctx.translate(table.x, table.y);
+
+    const isSelected = selectedTable && selectedTable.tableIndex === index;
+    const strokeStyle = isSelected ? 'lightblue' : 'black';
+
+    drawSingleTable(ctx, table.type, 'white', strokeStyle);
+    drawChairs(ctx, table, strokeStyle);
+
+    ctx.restore();
+  });
+
+  // 绘制临时移动位置的桌子
+  if (selectedTable && tempMovePosition) {
+    ctx.save();
+    ctx.translate(tempMovePosition.x, tempMovePosition.y);
+
+    const selectedTableData = tables[selectedTable.tableIndex];
+
+    drawSingleTable(ctx, selectedTableData.type, 'lightgrey', 'lightgrey');
+    drawChairs(ctx, selectedTableData, 'lightgrey');
+
+    ctx.restore();
+  }
+};

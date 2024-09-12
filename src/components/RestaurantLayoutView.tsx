@@ -1,24 +1,30 @@
 import React from 'react';
-import { RoomList } from './RestaurantLayout'; 
-import { Room, TableType, Tool, TableSubTool } from '../types';
+import { RoomList } from './RoomList'; 
+import { Room, TableType, Tool, TableSubTool, WallSubTool, RoomSubTool } from '../types';
 
 interface RestaurantLayoutViewProps {
   rooms: Room[];
   width: number;
   height: number;
-  currentTool: string | null;
-  tableSubTool: TableSubTool;
-  isDrawingRoom: boolean;
-  isAddingTable: boolean;
-  selectedTableType: TableType;
-
+  canvasRef: React.RefObject<HTMLCanvasElement>;
   setWidth: (width: number) => void;
   setHeight: (height: number) => void;
+
+  currentTool: string | null;
+  wallSubTool: WallSubTool;
+  tableSubTool: TableSubTool;
+  selectedTableType: TableType;
+  roomSubTool: RoomSubTool;
+
+  isDrawingRoom: boolean;
+
   handleRenameRoom: (roomId: number, newName: string) => void;
   handleDeleteRoom: (roomId: number) => void;
 
-  handleToolSelect: (tool: 'wall' | 'eraser' | 'table' | 'room') => void;
+  handleToolSelect: (tool: Tool) => void;
   handleTableSubToolSelect: (subTool: TableSubTool) => void;
+  handleWallSubToolSelect: (subTool: WallSubTool) => void;
+  //handleRoomSubToolSelect: (subTool: RoomSubTool) => void;
 
   handleReset: () => void;
   handleExport: () => void;
@@ -29,7 +35,7 @@ interface RestaurantLayoutViewProps {
   handleCanvasClick: (event: React.MouseEvent<HTMLCanvasElement>) => void;
   handleCanvasDoubleClick: (event: React.MouseEvent<HTMLCanvasElement>) => void;
   renderTableOptions: () => HTMLCanvasElement;
-  canvasRef: React.RefObject<HTMLCanvasElement>;
+
 }
 
 const buttonStyle: React.CSSProperties = {
@@ -39,19 +45,40 @@ const buttonStyle: React.CSSProperties = {
     msUserSelect: 'none',
   };
 
+const containerStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '20px',
+  padding: '20px',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  MozUserSelect: 'none',
+  msUserSelect: 'none',
+};
+
 export const RestaurantLayoutView: React.FC<RestaurantLayoutViewProps> = ({
   rooms,
   width,
   height,
-  currentTool,
-  isDrawingRoom,
-  isAddingTable,
-  selectedTableType,
+  canvasRef,
   setWidth,
   setHeight,
+
+  currentTool,
+  wallSubTool,
+  tableSubTool,
+  selectedTableType,
+  roomSubTool,
+
+  isDrawingRoom,
+
   handleRenameRoom,
   handleDeleteRoom,
+
   handleToolSelect,
+  handleTableSubToolSelect,
+  handleWallSubToolSelect,
+  //handleRoomSubToolSelect,
+
   handleReset,
   handleExport,
   handleImport,
@@ -61,54 +88,42 @@ export const RestaurantLayoutView: React.FC<RestaurantLayoutViewProps> = ({
 
   handleCanvasClick,
   handleCanvasDoubleClick,
-  renderTableOptions,
+  renderTableOptions
   
-  tableSubTool,
-  handleTableSubToolSelect,
-  canvasRef
 }) => {
   return (
-    <div style={{ display: 'flex'}}>
-    <RoomList rooms={rooms} onRenameRoom={handleRenameRoom} onDeleteRoom={handleDeleteRoom} />
-    <div>
+    <div style={containerStyle}>
+      <RoomList rooms={rooms} onRenameRoom={handleRenameRoom} onDeleteRoom={handleDeleteRoom} />
       <div>
-      <input
-        type="number"
-        value={width}
-        onChange={(e) => setWidth(Number(e.target.value))}
-      />
-      <input
-        type="number"
-        value={height}
-        onChange={(e) => setHeight(Number(e.target.value))}
-      />
-    </div>
-    <div>
-      <button 
-        onClick={() => handleToolSelect('wall')}
-        style={{ 
-          ...buttonStyle,
-          backgroundColor: currentTool === 'wall' ? 'lightblue' : 'white' 
-        }}
-      >
-        AddWall
-      </button>
-      <button 
-        onClick={() => handleToolSelect('eraser')}
-        style={{ 
-          ...buttonStyle,
-          backgroundColor: currentTool === 'eraser' ? 'lightblue' : 'white' 
-        }}
-      >
-        DeleteWall
-      </button>
-      <button 
-        onClick={() => handleToolSelect('table')}
-        style={{ 
-          ...buttonStyle,
-          backgroundColor: currentTool === 'table' ? 'lightblue' : 'white' 
-        }}
-      >
+        <div>
+        <input
+          type="number"
+          value={width}
+          onChange={(e) => setWidth(Number(e.target.value))}
+        />
+        <input
+          type="number"
+          value={height}
+          onChange={(e) => setHeight(Number(e.target.value))}
+        />
+      </div>
+      <div>
+        <button 
+          onClick={() => handleToolSelect('wall')}
+          style={{ 
+            ...buttonStyle,
+            backgroundColor: currentTool === 'wall' ? 'lightblue' : 'white' 
+          }}
+        >
+          AddWall
+        </button>
+        <button 
+          onClick={() => handleToolSelect('table')}
+          style={{ 
+            ...buttonStyle,
+            backgroundColor: currentTool === 'table' ? 'lightblue' : 'white' 
+          }}
+        >
           AddTable
         </button>
         <button 
@@ -132,6 +147,28 @@ export const RestaurantLayoutView: React.FC<RestaurantLayoutViewProps> = ({
           Import
         </button>
       </div>
+      {currentTool === 'wall' && (
+        <div>
+          <button 
+            onClick={() => handleWallSubToolSelect('add')}
+            style={{ 
+              ...buttonStyle,
+              backgroundColor: wallSubTool === 'add' ? 'lightblue' : 'white' 
+            }}
+          >
+            Add
+          </button>
+          <button 
+            onClick={() => handleWallSubToolSelect('delete')}
+            style={{ 
+              ...buttonStyle,
+              backgroundColor: wallSubTool === 'delete' ? 'lightblue' : 'white' 
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
       {currentTool === 'table' && (
     <div>
         <div>
@@ -142,8 +179,27 @@ export const RestaurantLayoutView: React.FC<RestaurantLayoutViewProps> = ({
           backgroundColor: tableSubTool === 'add' ? 'lightblue' : 'white' 
         }}
       >
-        Add</button>
-        <button 
+        Add
+      </button>
+      <button 
+        onClick={() => handleTableSubToolSelect('delete')}
+        style={{ 
+          ...buttonStyle,
+          backgroundColor: tableSubTool === 'delete' ? 'lightblue' : 'white' 
+        }}
+      >
+        Delete
+      </button>
+      <button 
+        onClick={() => handleTableSubToolSelect('move')}
+        style={{ 
+          ...buttonStyle,
+          backgroundColor: tableSubTool === 'move' ? 'lightblue' : 'white' 
+        }}
+      >
+        Move
+      </button>
+      <button 
         onClick={() => handleTableSubToolSelect('merge')}
         style={{ 
           ...buttonStyle,
@@ -161,15 +217,8 @@ export const RestaurantLayoutView: React.FC<RestaurantLayoutViewProps> = ({
       >
         Edit Chairs
       </button>
-      <button 
-        onClick={() => handleTableSubToolSelect('delete')}
-        style={{ 
-          ...buttonStyle,
-          backgroundColor: tableSubTool === 'delete' ? 'lightblue' : 'white' 
-        }}
-      >Delete</button>
-        </div>
-    {isAddingTable && (
+    </div>
+    {tableSubTool === 'add' && (
       <div style={{ display: 'flex', alignItems: 'center' }}>
         <img 
           src={renderTableOptions().toDataURL()} 
@@ -187,7 +236,7 @@ export const RestaurantLayoutView: React.FC<RestaurantLayoutViewProps> = ({
         </select>
       </div>
     )}
-  </div>
+    </div>
       )}
     <canvas
       ref={canvasRef}

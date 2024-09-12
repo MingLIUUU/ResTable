@@ -9,7 +9,7 @@ export interface Room {
   isTemporary: boolean;
 }
 
-export type Tool = 'wall' | 'eraser' | 'table' | 'room' | null;
+export type Tool = 'wall' | 'table' | 'room' | null;
 export type WallSubTool = 'add' | 'delete' | null;
-export type TableSubTool = 'add' | 'merge' | 'editChairs' | 'delete' | null;
+export type TableSubTool = 'add' |  'delete' | 'move' | 'merge' | 'editChairs' | null;
 export type RoomSubTool = 'add' | 'edit' |  'delete' | null;

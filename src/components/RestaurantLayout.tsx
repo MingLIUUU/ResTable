@@ -1,71 +1,10 @@
 import { click } from '@testing-library/user-event/dist/click';
 import React, { useState, useRef, useEffect } from 'react';
-import { Room, TableType, Tool, TableSubTool } from '../types';
+import { Room, TableType, Tool, TableSubTool, WallSubTool, RoomSubTool } from '../types';
 import { isPointInPolygon, pointToLineDistance, snapToGrid, createSquarePolygon } from '../utils/math';
-import { drawGrid, drawWalls, drawRoom, drawTempPoint } from '../utils/drawFunctions';
+import { drawGrid, drawWalls, drawRoom, drawTempPoint, drawTables } from '../utils/drawFunctions';
 import { RestaurantLayoutView } from './RestaurantLayoutView';
 import { tab } from '@testing-library/user-event/dist/tab';
-
-export const RoomList: React.FC<{
-  rooms: Room[];
-  onDeleteRoom: (roomId: number) => void;
-  onRenameRoom: (roomId: number, newName: string) => void;
-  level?: number;
-}> = ({ rooms, onDeleteRoom, onRenameRoom, level = 0 }) => {
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [newName, setNewName] = useState('');
-
-  const handleRename = (room: Room) => {
-    setEditingId(room.id);
-    setNewName(room.name);
-  };
-
-  const submitRename = (room: Room) => {
-    if (newName.trim() !== '') {
-      onRenameRoom(room.id, newName.trim());
-    }
-    setEditingId(null);
-  };
-
-  return (
-    <ul style={{ listStyleType: 'none', padding: level ? '0 0 0 20px' : 0 }}>
-      {rooms.map((room) => (
-        <li key={room.id} style={{ marginBottom: '10px' }}>
-          <div className="room-item">
-            <div className="room-info">
-              {editingId === room.id ? (
-                <input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onBlur={() => submitRename(room)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitRename(room)}
-                  autoFocus
-                />
-              ) : (
-                <span className="room-name">{room.id === 0 ? 'TotalTable' : room.name}: </span>
-              )}
-              {!room.isTemporary && <span className="table-count">{room.tables.length} tables</span>}
-            </div>
-            {room.id !== 0 && !room.isTemporary && (
-              <div className="room-actions">
-                <button onClick={() => handleRename(room)}>Rename</button>
-                <button onClick={() => onDeleteRoom(room.id)}>Delete</button>
-              </div>
-            )}
-          </div>
-          {room.subRooms.length > 0 && (
-            <RoomList 
-              rooms={room.subRooms} 
-              onRenameRoom={onRenameRoom} 
-              onDeleteRoom={onDeleteRoom} 
-              level={level + 1} 
-            />
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-};
 
 const RestaurantLayout: React.FC = () => {
   //for canvas
@@ -77,10 +16,10 @@ const RestaurantLayout: React.FC = () => {
       id: 0,
       name: 'TotalTable',
       walls: [
-        [0, 0, width, 0],       // 上边
-        [width, 0, width, height], // 右边
-        [width, height, 0, height], // 下边
-        [0, height, 0, 0]       // 左边
+        [0, 0, width, 0],      
+        [width, 0, width, height], 
+        [width, height, 0, height], 
+        [0, height, 0, 0]      
       ],
       tables: [],
       subRooms: [],
@@ -88,32 +27,37 @@ const RestaurantLayout: React.FC = () => {
     }
   ]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  //for tool selection
-  const [currentTool, setCurrentTool] = useState<'wall' | 'eraser' | 'table' |  'room' | null>(null);
+
+  //for tool menu
+  const [currentTool, setCurrentTool] = useState<Tool>(null);
   const [isToolInUse, setIsToolInUse] = useState(false);
-  //for walls
-  const [firstPoint, setFirstPoint] = useState<{ x: number; y: number } | null>(null);
-  // for tables
   const [tableSubTool, setTableSubTool] = useState<TableSubTool>(null);
   const [selectedTableType, setSelectedTableType] = useState<TableType>('square');
-  const [canAddTable, setCanAddTable] = useState(false);
+  
+  //for walls
+  const [wallSubTool, setWallSubTool] = useState<'add' | 'delete' | null>(null);
+  const [firstPoint, setFirstPoint] = useState<{ x: number; y: number } | null>(null);
+
+  //for tables
+  const [selectedTable, setSelectedTable] = useState<{ roomId: number; tableIndex: number, type: TableType, chairs: boolean[] } | null>(null);
+  const [tempMovePosition, setTempMovePosition] = useState<{ x: number; y: number } | null>(null);
+
   // for rooms
+  const [roomSubTool, setRoomSubTool] = useState<RoomSubTool>(null);
   const [roomPoints, setRoomPoints] = useState<{ x: number; y: number }[]>([]);
   const [isDrawingRoom, setIsDrawingRoom] = useState(false);
   const [drawingRoomPoints, setDrawingRoomPoints] = useState<{x: number, y: number}[]>([]);
   const [isAddingTable, setIsAddingTable] = useState(false);
 
+
   const redrawCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     ctx.clearRect(0, 0, width, height);
     drawGrid(ctx, width, height, unit);
-    drawWalls(ctx, rooms[0].walls);
-    drawTables(ctx, rooms[0].tables);
+    drawTables(ctx, rooms[0].tables, selectedTable, tempMovePosition);
 
     // 绘制Room的第一个点
     if (isDrawingRoom && drawingRoomPoints.length > 0) {
@@ -137,13 +81,14 @@ const RestaurantLayout: React.FC = () => {
     if (firstPoint && currentTool === 'wall') {
       drawTempPoint(ctx, firstPoint.x, firstPoint.y);
     }
+    drawWalls(ctx, rooms[0].walls);
+    
   };
 
- // 添加新的绘制函数来展示不同类型的桌子
  const drawTableOption = (ctx: CanvasRenderingContext2D, type: TableType, x: number, y: number, isSelected: boolean) => {
   ctx.save();
   ctx.translate(x, y);
-    // 绘制选中状态的圆角方框
+    // 绘选中状态的圆角方框
     if (isSelected) {
       ctx.strokeStyle = 'black';
       ctx.lineWidth = 2;
@@ -154,62 +99,51 @@ const RestaurantLayout: React.FC = () => {
   let chairPositions = [];
   switch (type) {
     case 'square':
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = 'black';
-    ctx.fillRect(-5, -5, 10, 10);
-    ctx.strokeRect(-5, -5, 10, 10);
-    chairPositions = [
-      [0, -10],  [10, 0], 
-      [0, 10],  [-10, 0]
-    ];
-    chairPositions.forEach(([cx, cy]) => {
-      ctx.beginPath();
-      ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    });
+      ctx.fillStyle = 'white';
+      ctx.strokeStyle = 'black';
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.strokeRect(-8, -8, 16, 16);
+      chairPositions = [
+        [0, -11],  [11, 0], 
+        [0, 11],  [-11, 0]
+      ];
       break;
     case 'diamond':
       ctx.fillStyle = 'white';
       ctx.strokeStyle = 'black';
       ctx.rotate(Math.PI / 4);
-      ctx.fillRect(-5, -5, 10, 10);
-      ctx.strokeRect(-5, -5, 10, 10);
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.strokeRect(-8, -8, 16, 16);
+      ctx.rotate(-Math.PI / 4);
       chairPositions = [
-        [0, -10],  [10, 0], 
-        [0, 10],  [-10, 0]
+        [8, -8],  [8, 8], 
+        [-8, 8],  [-8, -8]
       ];
-      chairPositions.forEach(([cx, cy]) => {
-        ctx.beginPath();
-        ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      });
       break;
     case 'round':
       ctx.fillStyle = 'white';
       ctx.strokeStyle = 'black';
       ctx.beginPath();
-      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
       ctx.fill();
-        ctx.stroke();
-        // 绘制6个椅子
-        chairPositions = [
-          [0, -10], [8.66, -5], [8.66, 5],
-          [0, 10], [-8.66, 5], [-8.66, -5]
-        ];
-        chairPositions.forEach(([cx, cy]) => {
-          ctx.beginPath();
-          ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        });
-        break;
-    }
-    ctx.restore();
-  };
+      ctx.stroke();
+      // 绘制6个椅子
+      chairPositions = [
+        [0, -11], [9.5, -5.5], [9.5, 5.5],
+        [0, 11], [-9.5, 5.5], [-9.5, -5.5]
+      ];
+      break;
+  }
+  
+  chairPositions.forEach(([cx, cy]) => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+  ctx.restore();
+};
 
-  // 添加渲染函数来展示桌子选项
   const renderTableOptions = () => {
     const canvas = document.createElement('canvas');
     canvas.width = 150;
@@ -223,65 +157,6 @@ const RestaurantLayout: React.FC = () => {
     return canvas;
   };
 
-  // 实现绘制桌椅的函数
-  const drawTables = (ctx: CanvasRenderingContext2D, tables: Room['tables']) => {
-  tables.forEach(table => {
-    ctx.save();
-    ctx.translate(table.x, table.y);
-
-    // 绘制桌子
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 1;
-
-    switch (table.type) {
-      case 'square':
-        ctx.fillRect(-5, -5, 10, 10);
-        ctx.strokeRect(-5, -5, 10, 10);
-        break;
-      case 'diamond':
-        ctx.rotate(Math.PI / 4);
-        ctx.fillRect(-5, -5, 10, 10);
-        ctx.strokeRect(-5, -5, 10, 10);
-        ctx.rotate(-Math.PI / 4); // 恢复旋转以正确绘制椅子
-        break;
-      case 'round':
-        ctx.beginPath();
-        ctx.arc(0, 0, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        break;
-    }
-
-    // 绘制椅子
-    table.chairs.forEach((chair, index) => {
-      if (chair) {
-        let cx, cy;
-        if (table.type === 'round') {
-          const angle = (index / table.chairs.length) * Math.PI * 2 - Math.PI / 2;
-          cx = Math.cos(angle) * 10;
-          cy = Math.sin(angle) * 10;
-        } else {
-          const chairPositions = table.type === 'diamond' 
-            ? [[7.07, -7.07], [7.07, 7.07],
-            [-7.07, 7.07], [-7.07, -7.07]]  // 菱形桌子的椅子位置
-            : [[0, -10], [10, 0], [0, 10], [-10, 0]]; // 方形桌子的椅子位置
-          [cx, cy] = chairPositions[index % chairPositions.length];
-        }
-        
-        ctx.fillStyle = 'white';
-        ctx.strokeStyle = 'black';
-        ctx.beginPath();
-        ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      } 
-    });
-
-    ctx.restore();
-  });
-};
-
   const handleTableOptionClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -290,7 +165,59 @@ const RestaurantLayout: React.FC = () => {
     else setSelectedTableType('round');
   };
 
-  // 处理鼠标单击事件的函数
+
+  const handleToolSelect = (tool: Tool)  => {
+    if ((isToolInUse && currentTool === 'wall' && firstPoint) 
+      || (isDrawingRoom))
+       {
+      alert('Finish the current operation first');
+      return;
+    }
+
+    setTableSubTool(null);
+    //setWallSubTool(null);
+    //setRoomSubTool(null);
+
+    // 如果当前工具是 'wall'，并且正在切换到另一个，重置 firstPoint
+    if (currentTool === 'wall' && tool !== 'wall') {
+      setFirstPoint(null);
+    }
+    
+    setCurrentTool(tool);
+    setIsToolInUse(tool === 'wall');
+
+    // 根据选择的工具设置默认的子工具
+    if (tool === 'table') {
+      setTableSubTool('add');
+      setIsAddingTable(true);
+    } else {
+      setIsAddingTable(false);
+    }
+
+    // 如果选择了 'room' 工具，设置 isDrawingRoom 为 true
+    if (tool === 'room') {
+      setIsDrawingRoom(true);
+    } else {
+      setIsDrawingRoom(false);
+      setDrawingRoomPoints([]);
+    }
+
+    if (tool === 'wall') {
+      setWallSubTool('add'); // 默认选择 'add' 子工具
+    } else {
+      setWallSubTool(null);
+    }
+  };
+
+  const handleWallSubToolSelect = (subTool: WallSubTool) => {
+    setWallSubTool(subTool);
+  };
+
+  const handleTableSubToolSelect = (subTool: TableSubTool) => {
+    setTableSubTool(subTool);
+  };
+
+  // 处理单击事件的函数
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -300,101 +227,124 @@ const RestaurantLayout: React.FC = () => {
     const clickY = event.clientY - rect.top;
     const [snappedX, snappedY] = snapToGrid(clickX, clickY, unit);
   
-    if (currentTool === 'table') {
-
-    
+    if (currentTool === 'table' && tableSubTool === 'add') {
       setRooms(prevRooms => {
-        let chairUpdated = false;
-        let tableDeleted = false;
-        let isNearby = false;
-    
+        const addTableToRoom = (room: Room): Room => {
+          if (isPointInPolygon(snappedX, snappedY, room.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))) {
+            return {
+              ...room,
+              tables: [...room.tables, { 
+                x: snappedX, 
+                y: snappedY, 
+                type: selectedTableType,
+                chairs: selectedTableType === 'round' ? Array(6).fill(true) : [true, true, true, true] 
+              }]
+            };
+          }
+          return {
+            ...room,
+            subRooms: room.subRooms.map(addTableToRoom)
+          };
+        };
+        
+        return prevRooms.map(addTableToRoom);
+      });
+    } else if (currentTool === 'table' && tableSubTool === 'editChairs') {
+      setRooms(prevRooms => {
         const updateRoomRecursive = (room: Room): Room => {
-          // for current table in current Room
-          const updatedTables = room.tables.filter(table => {
+          const updatedTables = room.tables.map(table => {
             const tablesquare = createSquarePolygon(table.x, table.y, unit);
             if (isPointInPolygon(clickX, clickY, tablesquare)) {
-              if (tableSubTool === 'delete') {
-                return false;
-              }else if (tableSubTool === 'editChairs') {
-                if (table.type === 'round') {
-                  const newSeatCount = prompt('输入座位数量 (2-8):', table.chairs.length.toString());
-                  if (newSeatCount) {
-                    
-                    const count = Math.max(2, Math.min(8, parseInt(newSeatCount, 10)));
-                    return {
-                      ...table,
-                      chairs: Array(count).fill(true)
-                    };
-                  }
-                } else if (table.type === 'square') {
-                  const updatedChairs = [...table.chairs];
-                  const dx = table.x - clickX;
-                  const dy = table.y - clickY;
-                  if (Math.abs(dy) > Math.abs(dx)) {
-                    // 上或下
-                    if (dy > 0) {
-                      updatedChairs[0] = !table.chairs[0]; // 上
-                    } else {
-                      updatedChairs[2] = !table.chairs[2]; // 下
-                    }
-                  } else {
-                    // 左或右
-                    if (dx < 0) updatedChairs[1] = !table.chairs[1]; // 右
-                    else updatedChairs[3] = !table.chairs[3]; // 左
-                  }
-                  chairUpdated = true;
-                  return { ...table, chairs: updatedChairs };
+              if (table.type === 'round') {
+                const newSeatCount = prompt('输入座位数量 (2-8):', table.chairs.length.toString());
+                if (newSeatCount) {
+                  const count = Math.max(2, Math.min(8, parseInt(newSeatCount, 10)));
+                  return {
+                    ...table,
+                    chairs: Array(count).fill(true)
+                  };
                 }
-              } else {
-                return table;
+              } else if (table.type === 'square') {
+                const updatedChairs = [...table.chairs];
+                const dx = table.x - clickX;
+                const dy = table.y - clickY;
+                if (Math.abs(dy) > Math.abs(dx)) {
+                  // 上或下
+                  if (dy > 0) {
+                    updatedChairs[0] = !table.chairs[0]; // 上
+                  } else {
+                    updatedChairs[2] = !table.chairs[2]; // 下
+                  }
+                } else {
+                  // 左或右
+                  if (dx < 0) updatedChairs[1] = !table.chairs[1]; // 右
+                  else updatedChairs[3] = !table.chairs[3]; // 左
+                }
+                return { ...table, chairs: updatedChairs };
               }
-          }
-        });
-          // 然后递归处理子Room
-          const updatedSubRooms = room.subRooms.map(updateRoomRecursive);
-    
-          return { ...room, tables: updatedTables, subRooms: updatedSubRooms };
-        };
-        const updatedRooms = prevRooms.map(updateRoomRecursive);
+            }
+            return table;
+          });
 
-        if (tableSubTool === 'add') {
-          const addTableToRoom = (room: Room): Room => {
-            // 首先检查所有子房间
-            for (let subRoom of room.subRooms) {
-              if (isPointInPolygon(snappedX, snappedY, subRoom.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))) {
-                // 如果点击在子房间内，递归调用addTableToRoom
+          return {
+            ...room,
+            tables: updatedTables,
+            subRooms: room.subRooms.map(updateRoomRecursive)
+          };
+        };
+
+        return prevRooms.map(updateRoomRecursive);
+      });
+
+      // 确保在状态更新后重新绘制画布
+      setTimeout(() => redrawCanvas(), 0);
+    } else if (currentTool === 'table' && tableSubTool === 'move') {
+      if (selectedTable) {
+        const isTableExist = rooms.some(room => 
+          room.tables.some(table => table.x === snappedX && table.y === snappedY)
+        );
+  
+        if (isTableExist) {
+          alert('Table already exists,please choose another position');
+          return;
+        }
+        setTempMovePosition({ x: snappedX, y: snappedY });
+      }
+    } else if (currentTool === 'wall') {
+      if (wallSubTool === 'add') {
+        if (!firstPoint) {
+          setFirstPoint({ x: snappedX, y: snappedY });
+          const ctx = canvas.getContext('2d');
+          if (ctx) drawTempPoint(ctx, snappedX, snappedY);
+        } else {
+          setRooms(prevRooms => {
+            const newWall = [firstPoint.x, firstPoint.y, snappedX, snappedY] as [number, number, number, number];
+            return prevRooms.map(room => {
+              if (room.id === 0) { // 主房间
                 return {
                   ...room,
-                  subRooms: room.subRooms.map(r => r.id === subRoom.id ? addTableToRoom(r) : r)
+                  walls: [...room.walls, newWall]
                 };
               }
-            }
-            
-            // 如果不在任何子房间内，检查是否在当前房间内
-            if (isPointInPolygon(snappedX, snappedY, room.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))) {
-              // 在当前房间内，添加新桌子
-              return {
-                ...room,
-                tables: [...room.tables, { 
-                  x: snappedX, 
-                  y: snappedY, 
-                  type: selectedTableType,
-                  chairs: selectedTableType === 'round' ? Array(6).fill(true) : [true, true, true, true] 
-                }]
-              };
-            }
-            
-            // 如果既不在子房间也不在当前房间，返回原始房间
-            return room;
-          };
-          
-          // 从顶层房间开始应用addTableToRoom函数
-          return updatedRooms.map(addTableToRoom);
-          setCanAddTable(false);
+              return room;
+            });
+          });
+          setFirstPoint(null);
+          setIsToolInUse(false);
         }
-    
-        return updatedRooms;
-      });
+      } else if (wallSubTool === 'delete') {
+        setRooms(prevRooms => {
+          const updatedRooms = prevRooms.map(room => {
+            const updatedWalls = room.walls.filter(([x1, y1, x2, y2]) => {
+              const distance = pointToLineDistance(clickX, clickY, x1, y1, x2, y2);
+              return distance > 5;
+            });
+            return { ...room, walls: updatedWalls };
+          }).filter(room => room.walls.length > 0);
+
+          return updatedRooms;
+        });
+      }
     }
   };
 
@@ -407,40 +357,7 @@ const RestaurantLayout: React.FC = () => {
     const clickY = event.clientY - rect.top;
     const [snappedX, snappedY] = snapToGrid(clickX, clickY, unit);
   
-    if (currentTool === 'wall') {
-      if (!firstPoint) {
-        setFirstPoint({ x: clickX, y: clickY });
-        const ctx = canvas.getContext('2d');
-        if (ctx) drawTempPoint(ctx, clickX, clickY);
-      } else {
-        setRooms(prevRooms => {
-          const newWall = [firstPoint.x, firstPoint.y, clickX, clickY] as [number, number, number, number];
-          const newRoom: Room = { 
-            id: prevRooms.length, 
-            name: `Room${prevRooms.length}`,
-            walls: [newWall], 
-            tables: [],
-            subRooms: [],
-            isTemporary: true
-          };
-          setFirstPoint(null);
-          setIsToolInUse(false);
-          return [...prevRooms, newRoom];
-        });
-      }
-    } else if (currentTool === 'eraser') {
-      setRooms(prevRooms => {
-        const updatedRooms = prevRooms.map(room => {
-          const updatedWalls = room.walls.filter(([x1, y1, x2, y2]) => {
-            const distance = pointToLineDistance(clickX, clickY, x1, y1, x2, y2);
-            return distance > 5;
-          });
-          return { ...room, walls: updatedWalls };
-        }).filter(room => room.walls.length > 0);
-
-        return updatedRooms;
-      });
-    } else if (currentTool === 'room') {
+    if (currentTool === 'room') {
 
       const rect = canvas.getBoundingClientRect();
       const clickX = Math.round((event.clientX - rect.left) / unit) * unit;
@@ -488,77 +405,63 @@ const RestaurantLayout: React.FC = () => {
         }
         return newPoints;
       });
-    }
-  };
-
-  // 添加Reset函数
-  const handleReset = () => {
-    setRooms([
-      {
-        id: 0,
-        name: 'Room0',
-        walls: [
-          [0, 0, width, 0],       // 上边
-          [width, 0, width, height], // 右边
-          [width, height, 0, height], // 下边
-          [0, height, 0, 0]       // 左边
-        ],
-        tables: [],
-        subRooms: [],
-        isTemporary: false
+    } else if (currentTool === 'table' && tableSubTool === 'delete') {
+      setRooms(prevRooms => {
+        const deleteTableFromRoom = (room: Room): Room => {
+          const updatedTables = room.tables.filter(table => {
+            const tableSquare = createSquarePolygon(table.x, table.y, unit);
+            return !isPointInPolygon(clickX, clickY, tableSquare);
+          });
+          return {
+            ...room,
+            tables: updatedTables,
+            subRooms: room.subRooms.map(deleteTableFromRoom)
+          };
+        };
+        return prevRooms.map(deleteTableFromRoom);
+      });
+    } else if (currentTool === 'table' && tableSubTool === 'move') {
+      if (!selectedTable) {
+        setRooms(prevRooms => {
+          const newRooms = [...prevRooms];
+          for (let i = 0; i < newRooms.length; i++) {
+            const tableIndex = newRooms[i].tables.findIndex(table => 
+              table.x === snappedX && table.y === snappedY
+            );
+            if (tableIndex !== -1) {
+              const table = newRooms[i].tables[tableIndex];
+              setSelectedTable({
+                roomId: newRooms[i].id,
+                tableIndex,
+                type: table.type,
+                chairs: table.chairs
+              });
+              return newRooms;
+            }
+          }
+          return newRooms;
+        });
+      } else if (tempMovePosition) {
+        setRooms(prevRooms => {
+          const newRooms = [...prevRooms];
+          const { roomId, tableIndex } = selectedTable;
+          const roomIndex = newRooms.findIndex(room => room.id === roomId);
+          if (roomIndex !== -1) {
+            const movedTable = { ...newRooms[roomIndex].tables[tableIndex], x: tempMovePosition.x, y: tempMovePosition.y };
+            newRooms[roomIndex].tables.splice(tableIndex, 1);
+            const newRoomIndex = newRooms.findIndex(room => 
+              isPointInPolygon(tempMovePosition.x, tempMovePosition.y, room.walls.map(([x1, y1]) => ({ x: x1, y: y1 })))
+            );
+            if (newRoomIndex !== -1) {
+              newRooms[newRoomIndex].tables.push(movedTable);
+            }
+          }
+          return newRooms;
+        });
+        setSelectedTable(null);
+        setTempMovePosition(null);
       }
-    ]);
-    setCurrentTool(null);
-    setIsToolInUse(false);
-    setFirstPoint(null);
-    setRoomPoints([]);
-    setIsDrawingRoom(false);
-    setDrawingRoomPoints([]);
-    setCanAddTable(false);
-    setTableSubTool(null);
-    setIsAddingTable(false);
-  };
-
-  const handleToolSelect = (tool: Tool)  => {
-    if ((isToolInUse && currentTool === 'wall' && firstPoint) 
-      || (isDrawingRoom))
-       {
-      alert('Finish the current operation first');
-      return;
     }
-
-    setTableSubTool(null);
-    //setWallSubTool(null);
-    //setRoomSubTool(null);
-
-    // 如果当前工具是 'wall'，并且正在切换到另一个，重置 firstPoint
-    if (currentTool === 'wall' && tool !== 'wall') {
-      setFirstPoint(null);
-    }
-    
-    setCurrentTool(tool);
-    setIsToolInUse(tool === 'wall');
-    setCanAddTable(false);
-
-    // 根据选择的工具设置默认的子工具
-    if (tool === 'table') {
-      setTableSubTool('add');
-      setIsAddingTable(true);
-    } else {
-      setIsAddingTable(false);
-    }
-
-    // 如果选择了 'room' 工具，设置 isDrawingRoom 为 true
-    if (tool === 'room') {
-      setIsDrawingRoom(true);
-    } else {
-      setIsDrawingRoom(false);
-      setDrawingRoomPoints([]);
-    }
-  };
-  
-  const handleTableSubToolSelect = (subTool: TableSubTool) => {
-    setTableSubTool(subTool);
   };
 
   // 添Add一个 useEffect 来监听 rooms 的变化
@@ -687,18 +590,59 @@ const RestaurantLayout: React.FC = () => {
     input.click();
   };
 
+  const handleReset = () => {
+    setRooms([
+      {
+        id: 0,
+        name: 'Room0',
+        walls: [
+          [0, 0, width, 0],       // 上边
+          [width, 0, width, height], // 右边
+          [width, height, 0, height], // 下边
+          [0, height, 0, 0]       // 左边
+        ],
+        tables: [],
+        subRooms: [],
+        isTemporary: false
+      }
+    ]);
+    setCurrentTool(null);
+    setIsToolInUse(false);
+    setFirstPoint(null);
+    setRoomPoints([]);
+    setIsDrawingRoom(false);
+    setDrawingRoomPoints([]);
+    setTableSubTool(null);
+    setSelectedTable(null);
+    setTempMovePosition(null);
+  };
+
+
   return (
     <RestaurantLayoutView
       rooms={rooms}
       width={width}
       height={height}
+      canvasRef={canvasRef}
+      setWidth={setWidth}
+      setHeight={setHeight}
+
       currentTool={currentTool}
-      isDrawingRoom={isDrawingRoom}
-      isAddingTable={isAddingTable}
+      wallSubTool={wallSubTool}
+      tableSubTool={tableSubTool}
       selectedTableType={selectedTableType}
+      roomSubTool={roomSubTool}
+   
+      isDrawingRoom={isDrawingRoom}
+
       handleRenameRoom={handleRenameRoom}
       handleDeleteRoom={handleDeleteRoom}
+
       handleToolSelect={handleToolSelect}
+      handleTableSubToolSelect={handleTableSubToolSelect}
+      handleWallSubToolSelect={handleWallSubToolSelect}
+      //handleRoomSubToolSelect={handleRoomSubToolSelect}
+
       handleReset={handleReset}
       handleExport={handleExport}
       handleImport={handleImport}
@@ -708,11 +652,7 @@ const RestaurantLayout: React.FC = () => {
       handleCanvasClick={handleCanvasClick}
       handleCanvasDoubleClick={handleCanvasDoubleClick}
       renderTableOptions={renderTableOptions}
-      canvasRef={canvasRef}
-      setWidth={setWidth}
-      setHeight={setHeight}
-      tableSubTool={tableSubTool}
-      handleTableSubToolSelect={handleTableSubToolSelect}
+
     />
   );
 };
