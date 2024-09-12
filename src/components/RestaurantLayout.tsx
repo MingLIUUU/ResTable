@@ -310,6 +310,7 @@ const RestaurantLayout: React.FC = () => {
         }
         setTempMovePosition({ x: snappedX, y: snappedY });
       }
+
     } else if (currentTool === 'wall') {
       if (wallSubTool === 'add') {
         if (!firstPoint) {
@@ -346,6 +347,7 @@ const RestaurantLayout: React.FC = () => {
         });
       }
     }
+    redrawCanvas();
   };
 
   // 处理双击事件的函数
@@ -439,6 +441,7 @@ const RestaurantLayout: React.FC = () => {
               return newRooms;
             }
           }
+          redrawCanvas();
           return newRooms;
         });
       } else if (tempMovePosition) {
@@ -456,10 +459,12 @@ const RestaurantLayout: React.FC = () => {
               newRooms[newRoomIndex].tables.push(movedTable);
             }
           }
+          redrawCanvas();
           return newRooms;
         });
         setSelectedTable(null);
         setTempMovePosition(null);
+        redrawCanvas();
       }
     }
   };
